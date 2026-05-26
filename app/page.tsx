@@ -1,17 +1,39 @@
 "use client";
 
-import React, { useEffect, useState, Suspense } from "react";
-import { useRouter, useSearchParams } from "next/navigation";
+import React, { useEffect, useState, useRef } from "react";
+import { useParams, useRouter } from "next/navigation";
+import Image from "next/image"; // IMPORT THÊM ĐỂ HIỂN THỊ LOGO ĐÚNG CHUẨN NEXT.JS
 
-interface Movie {
+interface MovieDetail {
   _id: string;
   name: string;
   origin_name: string;
+  content: string;
   thumb_url: string;
   poster_url: string;
-  slug: string;
+  trailer_url?: string;
+  time: string;
+  episode_current: string;
+  quality: string;
+  lang: string;
   year: number;
-  episode_current?: string;
+  actor: string[];
+  director: string[];
+  category: { id: string; name: string; slug: string }[];
+  country: { id: string; name: string; slug: string }[];
+}
+
+interface EpisodeItem {
+  name: string;
+  slug: string;
+  filename: string;
+  link_embed: string;
+  link_m3u8: string;
+}
+
+interface ServerItem {
+  server_name: string;
+  server_data: EpisodeItem[];
 }
 
 interface FilterItem {
@@ -20,33 +42,47 @@ interface FilterItem {
   slug: string;
 }
 
-function HomePageContent() {
-  const router = useRouter();
-  const searchParams = useSearchParams();
-  
-  // Lấy các tham số từ URL query
-  const typeParam = searchParams.get("type");
-  const genreParam = searchParams.get("genre");
-  const countryParam = searchParams.get("country");
-  const yearParam = searchParams.get("year");
-  const searchParam = searchParams.get("search");
+interface RelatedMovie {
+  _id: string;
+  name: string;
+  origin_name: string;
+  slug: string;
+  poster_url: string;
+  thumb_url: string;
+  episode_current: string;
+  quality: string;
+  lang: string;
+}
 
-  const [moviesUpdated, setMoviesUpdated] = useState<Movie[]>([]); 
-  const [moviesCinema, setMoviesCinema] = useState<Movie[]>([]);   
-  const [moviesSeries, setMoviesSeries] = useState<Movie[]>([]);   
-  const [featuredMovies, setFeaturedMovies] = useState<Movie[]>([]); 
-  const [topRatedMovies, setTopRatedMovies] = useState<Movie[]>([]); 
-  
-  const [searchMovies, setSearchMovies] = useState<Movie[]>([]);
+export default function MovieDetailPage() {
+  const params = useParams();
+  const router = useRouter();
+  const slug = params?.slug as string;
+
+  const [movie, setMovie] = useState<MovieDetail | null>(null);
+  const [servers, setServers] = useState<ServerItem[]>([]);
+  const [relatedMovies, setRelatedMovies] = useState<RelatedMovie[]>([]);
   const [loading, setLoading] = useState(true);
-  const [titlePage, setTitlePage] = useState("");
-  const [searchKeyword, setSearchKeyword] = useState("");
-  const [isHome, setIsHome] = useState(true);
+  const [errorApi, setErrorApi] = useState(false);
+
+  const [showPlayer, setShowPlayer] = useState<boolean>(false);
+  const playerRef = useRef<HTMLDivElement>(null);
+  const relatedRef = useRef<HTMLDivElement>(null);
+
+  const [currentLink, setCurrentLink] = useState<string>("");
+  const [currentBackupLink, setCurrentBackupLink] = useState<string>("");
+  const [playerType, setPlayerType] = useState<"embed" | "m3u8">("embed");
+  const [currentEpisodeName, setCurrentEpisodeName] = useState<string>("");
+
+  // STATE QUẢN LÝ NÚT SERVER ĐANG CHỌN (Mặc định là SERVER 1)
+  const [activeServerTab, setActiveServerTab] = useState<number>(1);
 
   const [genres, setGenres] = useState<FilterItem[]>([]);
   const [countries, setCountries] = useState<FilterItem[]>([]);
   const years = ["2026", "2025", "2024", "2023", "2022"];
   const [activeMenu, setActiveMenu] = useState<string | null>(null);
+  const [searchKeyword, setSearchKeyword] = useState("");
+  const [commentText, setCommentText] = useState("");
 
   const getCleanImageUrl = (url: string) => {
     if (!url) return "https://placehold.co/300x450/000/fff?text=No+Image";
@@ -60,35 +96,6 @@ function HomePageContent() {
     return `https://img.phimapi.com/${url}`;
   };
 
-  const loadHomeData = async () => {
-    try {
-      const [resUpdated, resCinema, resSeries] = await Promise.all([
-        fetch("https://phimapi.com/danh-sach/phim-moi-cap-nhat-v3?page=1"),
-        fetch("https://phimapi.com/v1/api/danh-sach/phim-chieu-rap?limit=10&sort_field=modified.time&sort_type=desc"),
-        fetch("https://phimapi.com/v1/api/danh-sach/phim-bo?limit=10&sort_field=modified.time&sort_type=desc")
-      ]);
-
-      const dataUpdated = await resUpdated.json();
-      const dataCinema = await resCinema.json();
-      const dataSeries = await resSeries.json();
-
-      if (dataUpdated?.items) setMoviesUpdated(dataUpdated.items.slice(0, 5));
-      
-      const cinemaItems = dataCinema?.data?.items || dataCinema?.items || [];
-      setMoviesCinema(cinemaItems.slice(0, 10)); 
-      setFeaturedMovies(cinemaItems.slice(0, 8)); 
-      
-      const seriesItems = dataSeries?.data?.items || dataSeries?.items || [];
-      setMoviesSeries(seriesItems.slice(0, 10));
-      
-      if (seriesItems.length > 0) {
-        setTopRatedMovies(seriesItems.slice(2, 8));
-      }
-    } catch (error) {
-      console.error("Lỗi fetch API trang chủ:", error);
-    }
-  };
-
   const loadMenuFilters = async () => {
     try {
       const [resGenres, resCountries] = await Promise.all([
@@ -97,7 +104,6 @@ function HomePageContent() {
       ]);
       const dataGenres = await resGenres.json();
       const dataCountries = await resCountries.json();
-      
       if (Array.isArray(dataGenres)) setGenres(dataGenres.slice(0, 12));
       if (Array.isArray(dataCountries)) setCountries(dataCountries.slice(0, 10));
     } catch (error) {
@@ -105,73 +111,100 @@ function HomePageContent() {
     }
   };
 
-  // Hàm xử lý gọi API dựa vào Query Parameters trên thanh URL
-  const handleRoutingFilters = async () => {
-    setLoading(true);
-    setActiveMenu(null);
-    let apiUrl = "";
-    let pageTitle = "";
-
-    if (typeParam === "phim-le") {
-      apiUrl = "https://phimapi.com/v1/api/danh-sach/phim-le?limit=24&sort_field=modified.time&sort_type=desc";
-      pageTitle = "Danh Sách Phim Lẻ";
-    } else if (typeParam === "phim-bo") {
-      apiUrl = "https://phimapi.com/v1/api/danh-sach/phim-bo?limit=24&sort_field=modified.time&sort_type=desc";
-      pageTitle = "Danh Sách Phim Bộ";
-    } else if (typeParam === "phim-chieu-rap") {
-      apiUrl = "https://phimapi.com/v1/api/danh-sach/phim-chieu-rap?limit=24";
-      pageTitle = "Phim Chiếu Rạp Mới Nhất";
-    } else if (typeParam === "thuyet-minh") {
-      apiUrl = "https://phimapi.com/v1/api/danh-sach/phim-bo?sort_lang=thuyet-minh&limit=24";
-      pageTitle = "Phim Thuyết Minh Chọn Lọc";
-    } else if (genreParam) {
-      apiUrl = `https://phimapi.com/v1/api/the-loai/${genreParam}?limit=24`;
-      const matchedGenre = genres.find(g => g.slug === genreParam);
-      pageTitle = `Thể loại: ${matchedGenre ? matchedGenre.name : genreParam}`;
-    } else if (countryParam) {
-      apiUrl = `https://phimapi.com/v1/api/quoc-gia/${countryParam}?limit=24`;
-      const matchedCountry = countries.find(c => c.slug === countryParam);
-      pageTitle = `Quốc gia: ${matchedCountry ? matchedCountry.name : countryParam}`;
-    } else if (yearParam) {
-      apiUrl = `https://phimapi.com/v1/api/nam/${yearParam}?limit=24`;
-      pageTitle = `Phim năm phát hành: ${yearParam}`;
-    } else if (searchParam) {
-      apiUrl = `https://phimapi.com/v1/api/tim-kiem?keyword=${encodeURIComponent(searchParam)}&limit=24`;
-      pageTitle = `Kết quả tìm kiếm: "${searchParam}"`;
-      setSearchKeyword(searchParam);
-    }
-
-    if (apiUrl) {
-      try {
-        const res = await fetch(apiUrl);
+  const loadRelatedMoviesByGenre = async (genreSlug: string, currentMovieId: string) => {
+    try {
+      const res = await fetch(`https://phimapi.com/v1/api/the-loai/${genreSlug}?limit=12`);
+      if (res.ok) {
         const data = await res.json();
-        const items = data?.data?.items || data?.items || [];
-        setSearchMovies(items);
-        setIsHome(false);
-        setTitlePage(pageTitle);
-      } catch (error) {
-        console.error("Lỗi lọc phim từ URL:", error);
+        if (data && data.data && data.data.items) {
+          const filtered = data.data.items.filter((item: any) => item._id !== currentMovieId);
+          setRelatedMovies(filtered.slice(0, 8));
+        }
       }
-    } else {
-      setIsHome(true);
-      await loadHomeData();
+    } catch (error) {
+      console.error("Lỗi lấy danh sách phim cùng thể loại:", error);
     }
-    setLoading(false);
   };
 
-  // Khởi tạo menu bộ lọc trước
   useEffect(() => {
-    const link = document.createElement("link");
-    link.href = "https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap";
-    link.rel = "stylesheet";
-    document.head.appendChild(link);
-    loadMenuFilters();
-  }, []);
+    if (!slug) return;
+    const fetchMovieData = async () => {
+      try {
+        setLoading(true);
+        setErrorApi(false);
+        setShowPlayer(false); 
+        
+        const res = await fetch(`https://phimapi.com/phim/${slug}`);
+        if (!res.ok) throw new Error("Không thể kết nối tới máy chủ API phim");
+        const data = await res.json();
 
-  // Mỗi khi URL thay đổi thông số query parameter, tự động gọi API lọc tương ứng
-  useEffect(() => {
-    handleRoutingFilters();
-  }, [typeParam, genreParam, countryParam, yearParam, searchParam, genres.length, countries.length]);
+        if (data && data.movie) {
+          const currentMovie = data.movie;
+          setMovie(currentMovie);
+          
+          const episodesData = data.episodes || [];
+          setServers(episodesData);
+
+          if (episodesData.length > 0 && episodesData[0].server_data?.length > 0) {
+            const firstEp = episodesData[0].server_data[0];
+            setCurrentLink(firstEp.link_embed);
+            setCurrentBackupLink(firstEp.link_m3u8);
+            setCurrentEpisodeName(firstEp.name);
+            setActiveServerTab(1); // Mặc định vào chọn Server 1 Vietsub
+          }
+
+          if (currentMovie.category && currentMovie.category.length > 0) {
+            loadRelatedMoviesByGenre(currentMovie.category[0].slug, currentMovie._id);
+          }
+        } else {
+          setErrorApi(true);
+        }
+      } catch (error) {
+        console.error("Lỗi lấy chi tiết phim từ API:", error);
+        setErrorApi(true);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    Promise.all([fetchMovieData(), loadMenuFilters()]);
+  }, [slug]);
+
+  const handleSelectEpisode = (ep: EpisodeItem, type: "embed" | "m3u8", tabId: number) => {
+    setCurrentLink(ep.link_embed);
+    setCurrentBackupLink(ep.link_m3u8);
+    setCurrentEpisodeName(ep.name);
+    setPlayerType(type); 
+    setShowPlayer(true);
+    setActiveServerTab(tabId);
+    
+    setTimeout(() => {
+      playerRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+    }, 100);
+  };
+
+  const getEpisodesByServerTab = (tabId: number): EpisodeItem[] => {
+    if (servers.length === 0) return [];
+    
+    const vietsubServer = servers[0];
+    const longTiengServer = servers.find(s => 
+      s.server_name.toLowerCase().includes("lồng tiếng") || 
+      s.server_name.toLowerCase().includes("longtieng") ||
+      s.server_name.toLowerCase().includes("thuyết minh") ||
+      s.server_name.toLowerCase().includes("thuyetminh")
+    ) || servers[1]; 
+
+    if (tabId === 1 && vietsubServer) return vietsubServer.server_data || [];
+    if (tabId === 2 && vietsubServer) return vietsubServer.server_data || [];
+    if (tabId === 3 && longTiengServer) return longTiengServer.server_data || [];
+    if (tabId === 4 && longTiengServer) return longTiengServer.server_data || [];
+
+    return [];
+  };
+
+  const getPlayerTypeByTab = (tabId: number) => {
+    return (tabId === 1 || tabId === 3) ? "embed" : "m3u8";
+  };
 
   const handleSearch = (e: React.KeyboardEvent<HTMLInputElement>) => {
     if (e.key === "Enter" && searchKeyword.trim() !== "") {
@@ -179,289 +212,305 @@ function HomePageContent() {
     }
   };
 
-  const handleGoHome = () => {
-    setSearchKeyword("");
-    router.push("/");
-  };
-
-  if (loading && moviesUpdated.length === 0) {
+  if (loading) {
     return (
       <div style={{ backgroundColor: "#060606", color: "#8a3ffc", height: "100vh", display: "flex", justifyContent: "center", alignItems: "center", fontFamily: "'Inter', sans-serif", fontWeight: "600", fontSize: "14px" }}>
-        ĐANG KHỞI TẠO NGUỒN PHIM MEEPHIM... VUI LÒNG CHỜ GIÂY LÁT!
+        ĐANG TẢI DỮ LIỆU PHIM MEEPHIM... VUI LÒNG CHỜ GIÂY LÁT!
       </div>
     );
   }
 
-  const renderMovieChunk = (moviesList: Movie[], startIndex: number, isReversed: boolean) => {
-    const chunk = moviesList.slice(startIndex, startIndex + 5);
-    if (chunk.length === 0) return null;
-
-    const bigMovie = chunk[0];
-    const smallMovies = chunk.slice(1, 5);
-    const gridTemplate = window.innerWidth < 768
-  ? "1fr"
-  : isReversed
-    ? "1fr 1fr 1.25fr"
-    : "1.25fr 1fr 1fr";
-
+  if (errorApi || !movie) {
     return (
-      <div style={{ display: "grid", gridTemplateColumns: gridTemplate, gap: "15px", marginBottom: "25px" }}>
-        {isReversed && smallMovies.slice(0, 2).map((movie) => (
-          <div key={movie._id} onClick={() => router.push(`/movie/${movie.slug}`)} style={{ position: "relative", cursor: "pointer", borderRadius: "6px", overflow: "hidden", height: "158px", backgroundColor: "#111", boxShadow: "0 4px 12px rgba(0,0,0,0.5)" }}>
-            <img src={getCleanImageUrl(movie.thumb_url || movie.poster_url)} alt={movie.name} style={{ width: "100%", height: "100%", objectFit: "cover" }} loading="lazy" />
-            <div style={{ position: "absolute", bottom: 0, left: 0, right: 0, background: "linear-gradient(transparent, rgba(0,0,0,0.95))", padding: "12px 10px" }}>
-              <h4 style={{ fontSize: "12px", color: "#ffffff", margin: 0, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", fontWeight: "600" }}>{movie.name}</h4>
-            </div>
-            <span style={{ position: "absolute", top: "8px", left: "8px", backgroundColor: "#00f5d4", color: "#000000", fontSize: "9px", fontWeight: "700", padding: "2px 5px", borderRadius: "3px" }}>HD</span>
-          </div>
-        ))}
-
-        {bigMovie && (
-          <div onClick={() => router.push(`/movie/${bigMovie.slug}`)} style={{ gridRow: "span 2", position: "relative", cursor: "pointer", borderRadius: "6px", overflow: "hidden", height: "331px", boxShadow: "0 6px 20px rgba(0,0,0,0.6)" }}>
-            <img src={getCleanImageUrl(bigMovie.poster_url || bigMovie.thumb_url)} alt={bigMovie.name} style={{ width: "100%", height: "100%", objectFit: "cover" }} loading="lazy" />
-            <div style={{ position: "absolute", bottom: 0, left: 0, right: 0, background: "linear-gradient(to top, rgba(0,0,0,1) 0%, rgba(0,0,0,0.6) 65%, transparent 100%)", padding: "18px 15px" }}>
-              <span style={{ backgroundColor: "#00f5d4", color: "#000000", fontSize: "9px", fontWeight: "700", padding: "2px 5px", borderRadius: "3px" }}>HD</span>
-              <h3 style={{ fontSize: "15px", color: "#ffffff", margin: "8px 0 3px 0", fontWeight: "700", letterSpacing: "0.3px" }}>{bigMovie.name}</h3>
-              <p style={{ fontSize: "12px", color: "#cccccc", margin: 0 }}>{bigMovie.origin_name}</p>
-            </div>
-          </div>
-        )}
-
-        {!isReversed ? (
-          smallMovies.map((movie) => (
-            <div key={movie._id} onClick={() => router.push(`/movie/${movie.slug}`)} style={{ position: "relative", cursor: "pointer", borderRadius: "6px", overflow: "hidden", height: "158px", backgroundColor: "#111", boxShadow: "0 4px 12px rgba(0,0,0,0.5)" }}>
-              <img src={getCleanImageUrl(movie.thumb_url || movie.poster_url)} alt={movie.name} style={{ width: "100%", height: "100%", objectFit: "cover" }} loading="lazy" />
-              <div style={{ position: "absolute", bottom: 0, left: 0, right: 0, background: "linear-gradient(transparent, rgba(0,0,0,0.95))", padding: "12px 10px" }}>
-                <h4 style={{ fontSize: "12px", color: "#ffffff", margin: 0, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", fontWeight: "600" }}>{movie.name}</h4>
-              </div>
-              <span style={{ position: "absolute", top: "8px", left: "8px", backgroundColor: "#00f5d4", color: "#000000", fontSize: "9px", fontWeight: "700", padding: "2px 5px", borderRadius: "3px" }}>HD</span>
-            </div>
-          ))
-        ) : (
-          smallMovies.slice(2, 4).map((movie) => (
-            <div key={movie._id} onClick={() => router.push(`/movie/${movie.slug}`)} style={{ position: "relative", cursor: "pointer", borderRadius: "6px", overflow: "hidden", height: "158px", backgroundColor: "#111", boxShadow: "0 4px 12px rgba(0,0,0,0.5)" }}>
-              <img src={getCleanImageUrl(movie.thumb_url || movie.poster_url)} alt={movie.name} style={{ width: "100%", height: "100%", objectFit: "cover" }} loading="lazy" />
-              <div style={{ position: "absolute", bottom: 0, left: 0, right: 0, background: "linear-gradient(transparent, rgba(0,0,0,0.95))", padding: "12px 10px" }}>
-                <h4 style={{ fontSize: "12px", color: "#ffffff", margin: 0, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", fontWeight: "600" }}>{movie.name}</h4>
-              </div>
-              <span style={{ position: "absolute", top: "8px", left: "8px", backgroundColor: "#00f5d4", color: "#000000", fontSize: "9px", fontWeight: "700", padding: "2px 5px", borderRadius: "3px" }}>HD</span>
-            </div>
-          ))
-        )}
+      <div style={{ backgroundColor: "#060606", color: "#ffffff", height: "100vh", display: "flex", flexDirection: "column", justifyContent: "center", alignItems: "center", fontFamily: "'Inter', sans-serif", gap: "15px" }}>
+        <p style={{ color: "#ff3333", fontWeight: "600" }}>⚠️ Hệ thống không tìm thấy nội dung phim này hoặc API đang bảo trì!</p>
+        <button onClick={() => router.push("/")} style={{ backgroundColor: "#8a3ffc", color: "#fff", border: "none", padding: "10px 20px", borderRadius: "4px", cursor: "pointer", fontWeight: "600", fontSize: "13px" }}>
+          Quay lại trang chủ Meephim
+        </button>
       </div>
     );
-  };
+  }
+
+  const currentTabEpisodes = getEpisodesByServerTab(activeServerTab);
+  const currentTabType = getPlayerTypeByTab(activeServerTab);
 
   return (
-<div style={{ 
-  backgroundColor: "#060606",
-  color: "#cccccc",
-  fontFamily: "'Inter', sans-serif",
-  minHeight: "100vh",
-  fontSize: "14px",
-  WebkitFontSmoothing: "antialiased"
-}}>
+    <div style={{ backgroundColor: "#060606", color: "#cccccc", fontFamily: "'Inter', sans-serif", minHeight: "100vh", fontSize: "14px", WebkitFontSmoothing: "antialiased", zoom: 1.12 }}>
       
-      {/* HEADER MENU */}
-   <header style={{ 
- backgroundColor: "#000000",
-padding: "10px 12px",
-flexWrap: "wrap",
-display: "flex", justifyContent: "space-between", alignItems: "center", position: "fixed", top: 0, left: 0, right: 0, zIndex: 9999, borderBottom: "1px solid #1a1525" }}>
+      {/* THANH CUỘN NỘI BỘ CUSTOM */}
+      <style dangerouslySetInnerHTML={{__html: `
+        .episode-scroll-container::-webkit-scrollbar {
+          width: 6px;
+        }
+        .episode-scroll-container::-webkit-scrollbar-track {
+          background: #111111;
+          border-radius: 4px;
+        }
+        .episode-scroll-container::-webkit-scrollbar-thumb {
+          background: #333333;
+          border-radius: 4px;
+        }
+        .episode-scroll-container::-webkit-scrollbar-thumb:hover {
+          background: #8a3ffc;
+        }
+      `}} />
+
+      {/* HEADER MENU - ĐÃ KHÔI PHỤC LOGO ẢNH CHUẨN */}
+      <header style={{ backgroundColor: "#000000", padding: "10px 50px", display: "flex", justifyContent: "space-between", alignItems: "center", position: "fixed", top: 0, left: 0, right: 0, zIndex: 9999, borderBottom: "1px solid #1a1525" }}>
         <div style={{ display: "flex", alignItems: "center", gap: "30px" }}>
           
-          <div onClick={handleGoHome} style={{ cursor: "pointer", display: "flex", alignItems: "center" }}>
-            <img 
+          {/* KHU VỰC LOGO BẰNG FILE ẢNH THEO ĐÚNG THIẾT KẾ CỦA BẠN */}
+          <div onClick={() => router.push("/")} style={{ cursor: "pointer", display: "flex", alignItems: "center" }}>
+            <Image 
               src="/logo.png" 
               alt="Meephim Logo" 
-              style={{ height: "52.5px", width: "auto", objectFit: "contain" }} 
-              onError={(e) => {
-                e.currentTarget.style.display = "none";
-                if(e.currentTarget.nextSibling) {
-                  (e.currentTarget.nextSibling as HTMLElement).style.display = "block";
-                }
-              }}
+              width={82}
+              height={62} 
+              priority
+              style={{ objectFit: "contain" }}
             />
-            <div style={{ display: "none", fontSize: "30px", fontWeight: "700", color: "#ffffff", letterSpacing: "-0.5px" }}>
-              mee<span style={{ color: "#8a3ffc" }}>phim</span>
-            </div>
           </div>
           
-          <nav style={{ 
-  display: "flex",
-  gap: "20px",
-  overflowX: "auto",
-  whiteSpace: "nowrap",
-  maxWidth: "100%", fontSize: "13px", fontWeight: "600", color: "#b3b3b3" }}>
-            <span onClick={() => router.push("/?type=phim-le")} style={{ cursor: "pointer", color: typeParam === "phim-le" ? "#8a3ffc" : "#b3b3b3" }}>Phim Lẻ</span>
-            <span onClick={() => router.push("/?type=phim-bo")} style={{ cursor: "pointer", color: typeParam === "phim-bo" ? "#8a3ffc" : "#b3b3b3" }}>Phim Bộ</span>
+          <nav style={{ display: "flex", gap: "20px", fontSize: "13px", fontWeight: "600", color: "#b3b3b3" }}>
+            <span onClick={() => router.push("/")} style={{ cursor: "pointer" }}>Trang Chủ</span>
+            <span onClick={() => router.push("/?type=phim-le")} style={{ cursor: "pointer" }}>Phim Lẻ</span>
+            <span onClick={() => router.push("/?type=phim-bo")} style={{ cursor: "pointer" }}>Phim Bộ</span>
             
             <div style={{ position: "relative" }}>
-              <span onClick={() => setActiveMenu(activeMenu === "genre" ? null : "genre")} style={{ cursor: "pointer", color: genreParam ? "#8a3ffc" : "#b3b3b3", display: "block" }}>Thể Loại ▾</span>
+              <span onClick={() => setActiveMenu(activeMenu === "genre" ? null : "genre")} style={{ cursor: "pointer", display: "block" }}>Thể Loại ▾</span>
               {activeMenu === "genre" && (
                 <div style={{ position: "absolute", top: "25px", left: 0, backgroundColor: "#0f0f0f", border: "1px solid #222", padding: "10px", borderRadius: "4px", width: "160px", display: "grid", gridTemplateColumns: "1fr", gap: "8px", zIndex: 110, boxShadow: "0 10px 25px rgba(0,0,0,0.7)" }}>
                   {genres.map((g) => (
-                    <span key={g._id} onClick={() => router.push(`/?genre=${g.slug}`)} style={{ cursor: "pointer", color: genreParam === g.slug ? "#8a3ffc" : "#cccccc", fontSize: "13px", padding: "2px 4px", borderRadius: "2px" }} onMouseEnter={(e) => e.currentTarget.style.color = "#8a3ffc"} onMouseLeave={(e) => e.currentTarget.style.color = genreParam === g.slug ? "#8a3ffc" : "#cccccc"}>{g.name}</span>
+                    <span key={g._id} onClick={() => router.push(`/?genre=${g.slug}`)} style={{ cursor: "pointer", color: "#cccccc", fontSize: "13px", padding: "2px 4px" }} onMouseEnter={(e) => e.currentTarget.style.color = "#8a3ffc"} onMouseLeave={(e) => e.currentTarget.style.color = "#cccccc"}>{g.name}</span>
                   ))}
                 </div>
               )}
             </div>
 
             <div style={{ position: "relative" }}>
-              <span onClick={() => setActiveMenu(activeMenu === "country" ? null : "country")} style={{ cursor: "pointer", color: countryParam ? "#8a3ffc" : "#b3b3b3", display: "block" }}>Quốc Gia ▾</span>
+              <span onClick={() => setActiveMenu(activeMenu === "country" ? null : "country")} style={{ cursor: "pointer", display: "block" }}>Quốc Gia ▾</span>
               {activeMenu === "country" && (
                 <div style={{ position: "absolute", top: "25px", left: 0, backgroundColor: "#0f0f0f", border: "1px solid #222", padding: "10px", borderRadius: "4px", width: "160px", display: "grid", gridTemplateColumns: "1fr", gap: "8px", zIndex: 110, boxShadow: "0 10px 25px rgba(0,0,0,0.7)" }}>
                   {countries.map((c) => (
-                    <span key={c._id} onClick={() => router.push(`/?country=${c.slug}`)} style={{ cursor: "pointer", color: countryParam === c.slug ? "#8a3ffc" : "#cccccc", fontSize: "13px", padding: "2px 4px", borderRadius: "2px" }} onMouseEnter={(e) => e.currentTarget.style.color = "#8a3ffc"} onMouseLeave={(e) => e.currentTarget.style.color = countryParam === c.slug ? "#8a3ffc" : "#cccccc"}>{c.name}</span>
+                    <span key={c._id} onClick={() => router.push(`/?country=${c.slug}`)} style={{ cursor: "pointer", color: "#cccccc", fontSize: "13px", padding: "2px 4px" }} onMouseEnter={(e) => e.currentTarget.style.color = "#8a3ffc"} onMouseLeave={(e) => e.currentTarget.style.color = "#cccccc"}>{c.name}</span>
                   ))}
                 </div>
               )}
             </div>
 
-            <div style={{ position: "relative" }}>
-              <span onClick={() => setActiveMenu(activeMenu === "year" ? null : "year")} style={{ cursor: "pointer", color: yearParam ? "#8a3ffc" : "#b3b3b3", display: "block" }}>Năm Phát Hành ▾</span>
-              {activeMenu === "year" && (
-                <div style={{ position: "absolute", top: "25px", left: 0, backgroundColor: "#0f0f0f", border: "1px solid #222", padding: "10px", borderRadius: "4px", width: "110px", display: "flex", flexDirection: "column", gap: "8px", zIndex: 110, boxShadow: "0 10px 25px rgba(0,0,0,0.7)" }}>
-                  {years.map((y) => (
-                    <span key={y} onClick={() => router.push(`/?year=${y}`)} style={{ cursor: "pointer", color: yearParam === y ? "#8a3ffc" : "#cccccc", fontSize: "13px", padding: "2px 4px" }} onMouseEnter={(e) => e.currentTarget.style.color = "#8a3ffc"} onMouseLeave={(e) => e.currentTarget.style.color = yearParam === y ? "#8a3ffc" : "#cccccc"}>Năm {y}</span>
-                  ))}
-                </div>
-              )}
-            </div>
-
-            <span onClick={() => router.push("/?type=phim-chieu-rap")} style={{ cursor: "pointer", color: typeParam === "phim-chieu-rap" ? "#8a3ffc" : "#b3b3b3" }}>Phim Chiếu Rạp</span>
-            <span onClick={() => router.push("/?type=thuyet-minh")} style={{ cursor: "pointer", color: typeParam === "thuyet-minh" ? "#8a3ffc" : "#b3b3b3" }}>Phim Thuyết Minh</span>
+            <span onClick={() => router.push("/?type=phim-chieu-rap")} style={{ cursor: "pointer" }}>Phim Chiếu Rạp</span>
           </nav>
         </div>
         
         <div style={{ display: "flex", alignItems: "center", gap: "15px" }}>
-          <input 
-            type="text" 
-            placeholder="Tìm phim + ấn Enter..." 
-            value={searchKeyword}
-            onChange={(e) => setSearchKeyword(e.target.value)}
-            onKeyDown={handleSearch}
-            style={{ backgroundColor: "#141414", border: "1px solid #251e36", color: "#ffffff", padding: "8px 18px", borderRadius: "20px", fontSize: "12px", width: "220px", outline: "none" }}
-          />
-          <span style={{ color: "#ffffff", fontSize: "13px", cursor: "pointer", fontWeight: "500" }}>👤 Đăng nhập</span>
+          <input type="text" placeholder="Tìm phim..." value={searchKeyword} onChange={(e) => setSearchKeyword(e.target.value)} onKeyDown={handleSearch} style={{ backgroundColor: "#141414", border: "1px solid #251e36", color: "#ffffff", padding: "8px 18px", borderRadius: "20px", fontSize: "12px", width: "220px", outline: "none" }} />
         </div>
       </header>
 
+      {/* BACKGROUND BANNER */}
+      <div style={{ position: "absolute", top: 0, left: 0, right: 0, height: "450px", backgroundImage: `linear-gradient(to bottom, rgba(6,6,6,0.2) 0%, rgba(6,6,6,0.95) 100%), url(${getCleanImageUrl(movie.thumb_url || movie.poster_url)})`, backgroundSize: "cover", backgroundPosition: "center top", opacity: 0.25, zIndex: 0, filter: "blur(4px)" }}></div>
+
       {/* CONTAINER CHÍNH */}
-      {/* CONTAINER CHÍNH - Đã sửa để Responsive */}
-<div style={{ width: "100%", margin: "0 auto", padding: "75px 15px 25px 15px", boxSizing: "border-box" }}>
-  
-  {/* ... giữ nguyên phần SLIDER ĐỀ CỬ ... */}
+      <div style={{ maxWidth: "1280px", margin: "0 auto", padding: "115px 20px 40px 20px", position: "relative", zIndex: 1 }}>
+        
+        {/* KHỐI HIỂN THỊ CHI TIẾT PHIM */}
+        <section style={{ display: "grid", gridTemplateColumns: "260px 1fr", gap: "40px", backgroundColor: "rgba(10, 10, 10, 0.85)", padding: "35px", borderRadius: "12px", border: "1px solid #151122", backdropFilter: "blur(10px)", marginBottom: "30px" }}>
+          <div>
+            <div style={{ width: "100%", height: "370px", borderRadius: "8px", overflow: "hidden", backgroundColor: "#111", boxShadow: "0 8px 25px rgba(0,0,0,0.7)", border: "1px solid #222" }}>
+              <img src={getCleanImageUrl(movie.poster_url || movie.thumb_url)} alt={movie.name} style={{ width: "100%", height: "100%", objectFit: "cover" }} />
+            </div>
+            <div style={{ marginTop: "20px", display: "grid", gridTemplateColumns: "1fr", gap: "8px" }}>
+              <div style={{ backgroundColor: "#141414", padding: "10px", borderRadius: "4px", textAlign: "center", fontSize: "13px", color: "#aaa" }}>
+                Trạng thái: <span style={{ color: "#00f5d4", fontWeight: "600" }}>{movie.episode_current}</span>
+              </div>
+              <div style={{ backgroundColor: "#141414", padding: "10px", borderRadius: "4px", textAlign: "center", fontSize: "13px", color: "#aaa" }}>
+                Định dạng: <span style={{ color: "#8a3ffc", fontWeight: "600" }}>{movie.quality} - {movie.lang}</span>
+              </div>
+            </div>
+          </div>
 
-  {/* Chỗ này quan trọng: dùng flex-wrap để nó tự nhảy xuống dòng trên điện thoại */}
-  <div style={{ display: "flex", flexWrap: "wrap", gap: "20px" }}>
-    
-    {/* Phần Main (Danh sách phim) */}
-    <main style={{ flex: "1 1 300px", minWidth: "0" }}>
-      {/* ... giữ nguyên nội dung bên trong main ... */}
-    </main>
-
-    {/* Phần Sidebar (Phim Hot) */}
-
-    
-          {/* SIDEBAR BÊN PHẢI */}
-          <aside style={{ flex: "0 0 310px", width: "100%" }}>
-            <h2 style={{ fontSize: "14px", color: "#8a3ffc", textTransform: "uppercase", marginBottom: "15px", fontWeight: "700", borderBottom: "1px solid #1a1a1a", paddingBottom: "8px" }}>
-              Phim Hot Trong Tuần
-            </h2>
-            <div style={{ backgroundColor: "#0b0b0b", borderRadius: "6px", border: "1px solid #141414", overflow: "hidden", marginBottom: "35px" }}>
-              {moviesCinema.slice(0, 7).map((movie, index) => (
-                <div key={movie._id} onClick={() => router.push(`/movie/${movie.slug}`)} style={{ display: "flex", alignItems: "center", padding: "12px 15px", borderBottom: index === 6 ? "none" : "1px solid #131313", cursor: "pointer" }}>
-                  <span style={{ width: "22px", height: "22px", backgroundColor: index < 3 ? "#8a3ffc" : "#222222", color: index < 3 ? "#ffffff" : "#aaa", borderRadius: "50%", display: "flex", justifyContent: "center", alignItems: "center", fontSize: "11px", fontWeight: "700", marginRight: "15px", flexShrink: 0 }}>
-                    {index + 1}
+          <div style={{ display: "flex", flexDirection: "column", justifyContent: "space-between" }}>
+            <div>
+              <span style={{ fontSize: "11px", backgroundColor: "#8a3ffc", color: "#fff", padding: "3px 8px", borderRadius: "4px", fontWeight: "700", textTransform: "uppercase" }}>MeePhim VIP</span>
+              <h1 style={{ fontSize: "28px", color: "#ffffff", margin: "10px 0 5px 0", fontWeight: "800" }}>{movie.name}</h1>
+              <h2 style={{ fontSize: "16px", color: "#888888", margin: "0 0 25px 0", fontWeight: "500", fontStyle: "italic" }}>{movie.origin_name} ({movie.year})</h2>
+              
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "14px 40px", borderBottom: "1px solid #222", paddingBottom: "25px", marginBottom: "25px", fontSize: "13.5px" }}>
+                <div><span style={{ color: "#666666", marginRight: "8px" }}>Thời lượng:</span> <span style={{ color: "#dddddd" }}>{movie.time || "N/A"}</span></div>
+                <div><span style={{ color: "#666666", marginRight: "8px" }}>Năm phát hành:</span> <span style={{ color: "#dddddd" }}>{movie.year}</span></div>
+                <div><span style={{ color: "#666666", marginRight: "8px" }}>Quốc gia:</span> <span style={{ color: "#dddddd" }}>{movie.country?.map((c) => c.name).join(", ") || "N/A"}</span></div>
+                <div><span style={{ color: "#666666", marginRight: "8px" }}>Thể loại:</span> <span style={{ color: "#dddddd" }}>{movie.category?.map((cat) => cat.name).join(", ") || "N/A"}</span></div>
+                
+                {/* BỔ SUNG THÔNG TIN ĐẠO DIỄN VÀ DIỄN VIÊN ĐỂ LẤP ĐẦY KHOẢNG TRỐNG */}
+                <div style={{ gridColumn: "span 2" }}>
+                  <span style={{ color: "#666666", marginRight: "8px" }}>Đạo diễn:</span> 
+                  <span style={{ color: "#dddddd" }}>
+                    {movie.director && movie.director.length > 0 && movie.director[0] !== "" ? movie.director.join(", ") : "Đang cập nhật"}
                   </span>
-                  <div style={{ width: "35px", height: "45px", borderRadius: "4px", overflow: "hidden", marginRight: "12px", backgroundColor: "#111", flexShrink: 0 }}>
-                    <img src={getCleanImageUrl(movie.thumb_url || movie.poster_url)} alt={movie.name} style={{ width: "100%", height: "100%", objectFit: "cover" }} loading="lazy" />
-                  </div>
-                  <div style={{ flexGrow: 1, minWidth: 0 }}>
-                    <h4 style={{ fontSize: "12px", color: "#ffffff", margin: "0 0 3px 0", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", fontWeight: "600" }}>{movie.name}</h4>
-                    <p style={{ fontSize: "13px", color: "#aaaaaa", margin: 0, fontWeight: "500" }}>{(245000 - (index * 19000)).toLocaleString()} lượt xem</p>
-                  </div>
                 </div>
-              ))}
+                <div style={{ gridColumn: "span 2" }}>
+                  <span style={{ color: "#666666", marginRight: "8px" }}>Diễn viên:</span> 
+                  <span style={{ color: "#dddddd", lineHeight: "1.5" }}>
+                    {movie.actor && movie.actor.length > 0 && movie.actor[0] !== "" ? movie.actor.join(", ") : "Đang cập nhật"}
+                  </span>
+                </div>
+              </div>
             </div>
 
-            <h2 style={{ fontSize: "14px", color: "#8a3ffc", textTransform: "uppercase", marginBottom: "15px", fontWeight: "700", borderBottom: "1px solid #1a1a1a", paddingBottom: "8px" }}>
-              Đánh giá cao
-            </h2>
-            <div style={{ display: "flex", flexDirection: "column", gap: "14px" }}>
-              {topRatedMovies.map((movie, index) => (
-                <div key={movie._id} onClick={() => router.push(`/movie/${movie.slug}`)} style={{ display: "flex", gap: "12px", cursor: "pointer" }}>
-                  <div style={{ width: "65px", height: "85px", borderRadius: "5px", overflow: "hidden", flexShrink: 0, backgroundColor: "#111" }}>
-                    <img src={getCleanImageUrl(movie.poster_url || movie.thumb_url)} alt={movie.name} style={{ width: "100%", height: "100%", objectFit: "cover" }} loading="lazy" />
-                  </div>
-                  <div style={{ display: "flex", flexDirection: "column", justifyContent: "center", minWidth: 0 }}>
-                    <h4 style={{ fontSize: "13px", color: "#ffffff", margin: "0 0 4px 0", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", fontWeight: "700" }}>{movie.name}</h4>
-                    <p style={{ fontSize: "13px", color: "#aaaaaa", margin: "0 0 5px 0", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{movie.origin_name}</p>
-                    <div style={{ display: "flex", alignItems: "center", gap: "8px", fontSize: "13px", color: "#cccccc" }}>
-                      <span style={{ color: "#8a3ffc", fontWeight: "700" }}>⭐ {(9.5 - (index * 0.1)).toFixed(1)}</span>
-                      <span>•</span>
-                      <span style={{ color: "#00f5d4", fontWeight: "600" }}>Full HD</span>
-                    </div>
-                  </div>
-                </div>
-              ))}
+            <div style={{ backgroundColor: "rgba(0,0,0,0.3)", padding: "20px", borderRadius: "6px", border: "1px solid #1a1a1a" }}>
+              <h3 style={{ fontSize: "14px", color: "#ffffff", margin: "0 0 10px 0", textTransform: "uppercase", fontWeight: "700" }}>Tóm tắt nội dung</h3>
+              <p style={{ color: "#aaaaaa", lineHeight: "1.7", fontSize: "13.5px", margin: 0, textAlign: "justify" }} dangerouslySetInnerHTML={{ __html: movie.content || "Nội dung phim đang được cập nhật..." }} />
             </div>
-          </aside>
+          </div>
+        </section>
 
+        {/* KHỐI TRÌNH PHÁT VIDEO PLAYER */}
+        <div ref={playerRef}>
+          {showPlayer && (
+            <section style={{ marginBottom: "30px" }}>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "15px" }}>
+                <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
+                  <span style={{ width: "4px", height: "16px", backgroundColor: "#8a3ffc", borderRadius: "2px" }}></span>
+                  <span style={{ fontSize: "15px", fontWeight: "600", color: "#ffffff" }}>
+                    Đang phát: Tập {currentEpisodeName} (SERVER {activeServerTab})
+                  </span>
+                </div>
+              </div>
+              
+              <div style={{ position: "relative", width: "100%", paddingTop: "56.25%", backgroundColor: "#000000", borderRadius: "8px", overflow: "hidden", border: "1px solid #1a142e" }}>
+                {playerType === "embed" ? (
+                  <iframe src={currentLink} style={{ position: "absolute", top: 0, left: 0, width: "100%", height: "100%", border: "none" }} allowFullScreen scrolling="no" />
+                ) : (
+                  <iframe src={`https://imbed.xyz/player/?url=${encodeURIComponent(currentBackupLink)}`} style={{ position: "absolute", top: 0, left: 0, width: "100%", height: "100%", border: "none" }} allowFullScreen scrolling="no" />
+                )}
+              </div>
+            </section>
+          )}
         </div>
+
+        {/* KHU VỰC CHỌN SERVER VÀ HIỂN THỊ TẬP PHIM */}
+        {servers.length > 0 && (
+          <section style={{ backgroundColor: "#0d0d0d", padding: "25px", borderRadius: "8px", border: "1px solid #1a1a1a", marginBottom: "30px" }}>
+            <h2 style={{ fontSize: "15px", color: "#ffffff", margin: "0 0 15px 0", fontWeight: "600" }}>
+              Chọn Server Xem Phim:
+            </h2>
+
+            {/* HÀNG NÚT CHỌN SERVER */}
+            <div style={{ display: "flex", flexWrap: "wrap", gap: "12px", marginBottom: "20px", borderBottom: "1px solid #222", paddingBottom: "18px" }}>
+              {[
+                { id: 1, name: "SERVER 1 (VIETSUB)" },
+                { id: 2, name: "SERVER 2 (VIETSUB)" },
+                { id: 3, name: "SERVER 3 (LỒNG TIẾNG)" },
+                { id: 4, name: "SERVER 4 (LỒNG TIẾNG)" }
+              ].map((srv) => {
+                const isSelected = activeServerTab === srv.id;
+                return (
+                  <button
+                    key={srv.id}
+                    onClick={() => setActiveServerTab(srv.id)}
+                    style={{
+                      backgroundColor: isSelected ? "#8a3ffc" : "#1a1a1a",
+                      color: isSelected ? "#ffffff" : "#aaaaaa",
+                      border: isSelected ? "1px solid #a873ff" : "1px solid #333",
+                      padding: "10px 20px",
+                      borderRadius: "6px",
+                      cursor: "pointer",
+                      fontSize: "13px",
+                      fontWeight: "700",
+                      transition: "all 0.2s ease",
+                      boxShadow: isSelected ? "0 4px 15px rgba(138, 63, 252, 0.4)" : "none"
+                    }}
+                  >
+                    {srv.name}
+                  </button>
+                );
+              })}
+            </div>
+
+            {/* KHU VỰC GIỚI HẠN CHIỀU CAO NÚT TẬP VÀ THANH CUỘN NỘI BỘ */}
+            <div 
+              className="episode-scroll-container"
+              style={{ 
+                maxHeight: "220px",        
+                overflowY: "auto",          
+                paddingRight: "8px"         
+              }}
+            >
+              {currentTabEpisodes.length > 0 ? (
+                <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(85px, 1fr))", gap: "10px" }}>
+                  {currentTabEpisodes.map((ep) => {
+                    const isActived = showPlayer && playerType === currentTabType && ep.name === currentEpisodeName;
+                    return (
+                      <button
+                        key={`${activeServerTab}-${ep.slug}`}
+                        onClick={() => handleSelectEpisode(ep, currentTabType, activeServerTab)}
+                        style={{
+                          backgroundColor: isActived ? (currentTabType === "embed" ? "#00b46e" : "#ff9900") : "#1c1e22",
+                          color: isActived ? "#ffffff" : "#dddddd",
+                          border: "none",
+                          padding: "11px 10px",
+                          borderRadius: "4px",
+                          cursor: "pointer",
+                          fontSize: "13px",
+                          fontWeight: "600",
+                          textAlign: "center",
+                          transition: "all 0.15s ease"
+                        }}
+                      >
+                        Tập {ep.name}
+                      </button>
+                    );
+                  })}
+                </div>
+              ) : (
+                <div style={{ color: "#666", fontSize: "13.5px", fontStyle: "italic", padding: "10px 0" }}>
+                  Nguồn phim này hiện tại chưa cập nhật tập mới, vui lòng chọn Server khác!
+                </div>
+              )}
+            </div>
+
+          </section>
+        )}
+
+        {/* KHU VỰC BÌNH LUẬN */}
+        <section style={{ backgroundColor: "#0d0d0d", padding: "25px", borderRadius: "8px", border: "1px solid #1a1a1a", marginBottom: "40px" }}>
+          <h2 style={{ fontSize: "16px", color: "#ffffff", margin: "0 0 20px 0", fontWeight: "600" }}>Bình luận (0)</h2>
+          <div style={{ display: "flex", gap: "15px", alignItems: "flex-start" }}>
+            <textarea 
+              placeholder="Tham gia cuộc thảo luận..." 
+              value={commentText}
+              onChange={(e) => setCommentText(e.target.value)}
+              style={{ flex: 1, height: "70px", backgroundColor: "#141414", border: "1px solid #222", borderRadius: "6px", color: "#fff", padding: "12px", fontSize: "13.5px", outline: "none", resize: "none" }}
+            />
+          </div>
+        </section>
+
+        {/* KHU VỰC PHIM ĐỀ XUẤT */}
+        {relatedMovies.length > 0 && (
+          <section style={{ marginBottom: "20px" }}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "20px" }}>
+              <h2 style={{ fontSize: "17px", color: "#ffffff", fontWeight: "700" }}>Có thể bạn cũng thích</h2>
+            </div>
+            <div style={{ display: "flex", gap: "16px", overflowX: "auto", paddingBottom: "15px", scrollbarWidth: "none" }}>
+              {relatedMovies.map((item) => (
+                <div key={item._id} onClick={() => router.push(`/movie/${item.slug}`)} style={{ minWidth: "142px", width: "142px", cursor: "pointer" }}>
+                  <div style={{ position: "relative", width: "100%", height: "210px", borderRadius: "6px", overflow: "hidden", backgroundColor: "#111" }}>
+                    <img src={getCleanImageUrl(item.poster_url || item.thumb_url)} alt={item.name} style={{ width: "100%", height: "100%", objectFit: "cover" }} />
+                  </div>
+                  <h3 style={{ fontSize: "13px", color: "#fff", margin: "8px 0 2px 0", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{item.name}</h3>
+                </div>
+              ))}
+            </div>
+          </section>
+        )}
+
       </div>
 
       {/* FOOTER */}
-      <footer style={{ backgroundColor: "#000000", borderTop: "1px solid #14111f", marginTop: "80px", padding: "45px 0" }}>
-        <div style={{ maxWidth: "1240px", margin: "0 auto", display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))", gap: "60px", padding: "0 20px" }}>
-          <div>
-            <div onClick={handleGoHome} style={{ cursor: "pointer", display: "flex", alignItems: "center", marginBottom: "15px" }}>
-              <img 
-                src="/logo.png" 
-                alt="Meephim Logo" 
-                style={{ height: "52.5px", width: "auto", objectFit: "contain" }} 
-                onError={(e) => {
-                  e.currentTarget.style.display = "none";
-                  if(e.currentTarget.nextSibling) {
-                    (e.currentTarget.nextSibling as HTMLElement).style.display = "block";
-                  }
-                }}
-              />
-              <div style={{ display: "none", fontSize: "30px", fontWeight: "700", color: "#ffffff", letterSpacing: "-0.5px" }}>
-                mee<span style={{ color: "#8a3ffc" }}>phim</span>
-              </div>
-            </div>
-            <p style={{ color: "#999999", fontSize: "14px", lineHeight: "1.8", margin: 0 }}>
-              Xem phim online miễn phí chất lượng cao với phụ đề Tiếng Việt, Thuyết Minh và Lồng Tiếng luôn cập nhật nhanh nhất các thể loại phim.
-            </p>
-          </div>
-          <div>
-            <h4 style={{ color: "#ffffff", fontSize: "14px", marginBottom: "14px", textTransform: "uppercase", fontWeight: "700" }}>Trợ giúp</h4>
-            <ul style={{ listStyle: "none", padding: 0, margin: 0, display: "flex", flexDirection: "column", gap: "10px", fontSize: "13px", color: "#999999" }}>
-              <li style={{ cursor: "pointer" }}>Điều khoản sử dụng</li>
-              <li style={{ cursor: "pointer" }}>Chính sách riêng tư</li>
-            </ul>
-          </div>
-          <div>
-            <h4 style={{ color: "#ffffff", fontSize: "14px", marginBottom: "14px", textTransform: "uppercase", fontWeight: "700" }}>About</h4>
-            <ul style={{ listStyle: "none", padding: 0, margin: 0, display: "flex", flexDirection: "column", gap: "10px", fontSize: "13px", color: "#999999" }}>
-              <li style={{ cursor: "pointer" }}>Giới thiệu dịch vụ</li>
-              <li style={{ cursor: "pointer" }}>Liên hệ quảng cáo</li>
-            </ul>
-          </div>
-        </div>
+      <footer style={{ backgroundColor: "#000000", borderTop: "1px solid #14111f", padding: "35px 0", textAlign: "center", fontSize: "12px", color: "#666666", marginTop: "40px" }}>
+        <p style={{ margin: 0 }}>© 2026 Meephim - Hệ thống xem phim trực tuyến tối ưu hóa dữ liệu.</p>
       </footer>
 
     </div>
-  );
-}
-
-// Bọc Component trong Suspense để tránh lỗi của Next.js khi dùng useSearchParams ở Client Component
-export default function HomePage() {
-  return (
-    <Suspense fallback={<div style={{ color: "#8a3ffc", backgroundColor: "#060606", height: "100vh", display: "flex", justifyContent: "center", alignItems: "center" }}>Đang tải nội dung...</div>}>
-      <HomePageContent />
-    </Suspense>
   );
 }
