@@ -198,7 +198,11 @@ function HomePageContent() {
 
     const bigMovie = chunk[0];
     const smallMovies = chunk.slice(1, 5);
-    const gridTemplate = isReversed ? "1fr 1fr 1.25fr" : "1.25fr 1fr 1fr";
+    const gridTemplate = window.innerWidth < 768
+  ? "1fr"
+  : isReversed
+    ? "1fr 1fr 1.25fr"
+    : "1.25fr 1fr 1fr";
 
     return (
       <div style={{ display: "grid", gridTemplateColumns: gridTemplate, gap: "15px", marginBottom: "25px" }}>
@@ -259,7 +263,10 @@ function HomePageContent() {
 }}>
       
       {/* HEADER MENU */}
-      <header style={{ backgroundColor: "#000000", padding: "10px 50px", display: "flex", justifyContent: "space-between", alignItems: "center", position: "fixed", top: 0, left: 0, right: 0, zIndex: 9999, borderBottom: "1px solid #1a1525" }}>
+   <header style={{ 
+  backgroundColor: "#000000",
+  padding: "10px 12px",
+  flexWrap: "wrap",", display: "flex", justifyContent: "space-between", alignItems: "center", position: "fixed", top: 0, left: 0, right: 0, zIndex: 9999, borderBottom: "1px solid #1a1525" }}>
         <div style={{ display: "flex", alignItems: "center", gap: "30px" }}>
           
           <div onClick={handleGoHome} style={{ cursor: "pointer", display: "flex", alignItems: "center" }}>
@@ -279,7 +286,12 @@ function HomePageContent() {
             </div>
           </div>
           
-          <nav style={{ display: "flex", gap: "20px", fontSize: "13px", fontWeight: "600", color: "#b3b3b3" }}>
+          <nav style={{ 
+  display: "flex",
+  gap: "20px",
+  overflowX: "auto",
+  whiteSpace: "nowrap",
+  maxWidth: "100%", fontSize: "13px", fontWeight: "600", color: "#b3b3b3" }}>
             <span onClick={() => router.push("/?type=phim-le")} style={{ cursor: "pointer", color: typeParam === "phim-le" ? "#8a3ffc" : "#b3b3b3" }}>Phim Lẻ</span>
             <span onClick={() => router.push("/?type=phim-bo")} style={{ cursor: "pointer", color: typeParam === "phim-bo" ? "#8a3ffc" : "#b3b3b3" }}>Phim Bộ</span>
             
@@ -362,7 +374,7 @@ function HomePageContent() {
             <h2 style={{ fontSize: "15px", color: "#ffffff", textTransform: "uppercase", borderLeft: "3px solid #8a3ffc", paddingLeft: "10px", marginBottom: "15px", fontWeight: "700", letterSpacing: "0.5px" }}>
               Meephim Đề Cử Chọn Lọc
             </h2>
-            <div style={{ display: "grid", gridTemplateColumns: "repeat(8, 1fr)", gap: "12px" }}>
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(140px, 1fr))", gap: "12px" }}>
               {featuredMovies.slice(0, 8).map((movie) => (
                 <div key={movie._id} onClick={() => router.push(`/movie/${movie.slug}`)} style={{ cursor: "pointer" }}>
                   <div style={{ position: "relative", width: "100%", height: "185px", borderRadius: "5px", overflow: "hidden", backgroundColor: "#111111" }}>
@@ -435,7 +447,7 @@ function HomePageContent() {
                   <h2 style={{ fontSize: "16px", color: "#8a3ffc", textTransform: "uppercase", margin: 0, fontWeight: "700" }}>{titlePage}</h2>
                   <span onClick={handleGoHome} style={{ color: "#8a3ffc", fontSize: "12px", cursor: "pointer", fontWeight: "700" }}>← Quay lại trang chủ</span>
                 </div>
-                <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: "15px" }}>
+                <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(140px, 1fr))", gap: "15px" }}>
                   {searchMovies.length > 0 ? (
                     searchMovies.map((movie) => (
                       <div key={movie._id} onClick={() => router.push(`/movie/${movie.slug}`)} style={{ cursor: "pointer", marginBottom: "15px" }}>
@@ -505,7 +517,7 @@ function HomePageContent() {
 
       {/* FOOTER */}
       <footer style={{ backgroundColor: "#000000", borderTop: "1px solid #14111f", marginTop: "80px", padding: "45px 0" }}>
-        <div style={{ maxWidth: "1240px", margin: "0 auto", display: "grid", gridTemplateColumns: "2fr 1fr 1fr", gap: "60px", padding: "0 20px" }}>
+        <div style={{ maxWidth: "1240px", margin: "0 auto", display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))", gap: "60px", padding: "0 20px" }}>
           <div>
             <div onClick={handleGoHome} style={{ cursor: "pointer", display: "flex", alignItems: "center", marginBottom: "15px" }}>
               <img 
