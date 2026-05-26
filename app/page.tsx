@@ -249,7 +249,14 @@ function HomePageContent() {
   };
 
   return (
-    <div style={{ backgroundColor: "#060606", color: "#cccccc", fontFamily: "'Inter', sans-serif", minHeight: "100vh", fontSize: "14px", WebkitFontSmoothing: "antialiased", zoom: 1.12 }}>
+<div style={{ 
+  backgroundColor: "#060606",
+  color: "#cccccc",
+  fontFamily: "'Inter', sans-serif",
+  minHeight: "100vh",
+  fontSize: "14px",
+  WebkitFontSmoothing: "antialiased"
+}}>
       
       {/* HEADER MENU */}
       <header style={{ backgroundColor: "#000000", padding: "10px 50px", display: "flex", justifyContent: "space-between", alignItems: "center", position: "fixed", top: 0, left: 0, right: 0, zIndex: 9999, borderBottom: "1px solid #1a1525" }}>
