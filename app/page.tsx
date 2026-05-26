@@ -264,9 +264,10 @@ function HomePageContent() {
       
       {/* HEADER MENU */}
    <header style={{ 
-  backgroundColor: "#000000",
-  padding: "10px 12px",
-  flexWrap: "wrap",", display: "flex", justifyContent: "space-between", alignItems: "center", position: "fixed", top: 0, left: 0, right: 0, zIndex: 9999, borderBottom: "1px solid #1a1525" }}>
+ backgroundColor: "#000000",
+padding: "10px 12px",
+flexWrap: "wrap",
+display: "flex", justifyContent: "space-between", alignItems: "center", position: "fixed", top: 0, left: 0, right: 0, zIndex: 9999, borderBottom: "1px solid #1a1525" }}>
         <div style={{ display: "flex", alignItems: "center", gap: "30px" }}>
           
           <div onClick={handleGoHome} style={{ cursor: "pointer", display: "flex", alignItems: "center" }}>
