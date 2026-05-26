@@ -328,7 +328,26 @@ function HomePageContent() {
       </header>
 
       {/* CONTAINER CHÍNH */}
-      <div style={{ maxWidth: "1280px", margin: "0 auto", padding: "75px 20px 25px 20px" }}>
+      {/* CONTAINER CHÍNH - Đã sửa để Responsive */}
+<div style={{ width: "100%", margin: "0 auto", padding: "75px 15px 25px 15px", boxSizing: "border-box" }}>
+  
+  {/* ... giữ nguyên phần SLIDER ĐỀ CỬ ... */}
+
+  {/* Chỗ này quan trọng: dùng flex-wrap để nó tự nhảy xuống dòng trên điện thoại */}
+  <div style={{ display: "flex", flexWrap: "wrap", gap: "20px" }}>
+    
+    {/* Phần Main (Danh sách phim) */}
+    <main style={{ flex: "1 1 300px", minWidth: "0" }}>
+      {/* ... giữ nguyên nội dung bên trong main ... */}
+    </main>
+
+    {/* Phần Sidebar (Phim Hot) */}
+    <aside style={{ flex: "0 0 310px", width: "100%" }}>
+      {/* ... giữ nguyên nội dung bên trong aside ... */}
+    </aside>
+
+  </div>
+</div>
         
         {/* SLIDER ĐỀ CỬ */}
         {isHome && featuredMovies.length > 0 && (
@@ -350,7 +369,26 @@ function HomePageContent() {
           </section>
         )}
 
-        <div style={{ display: "grid", gridTemplateColumns: "1fr 310px", gap: "30px" }}>
+        {/* CONTAINER CHÍNH - Đã sửa để Responsive */}
+<div style={{ width: "100%", margin: "0 auto", padding: "75px 15px 25px 15px", boxSizing: "border-box" }}>
+  
+  {/* ... giữ nguyên phần SLIDER ĐỀ CỬ ... */}
+
+  {/* Chỗ này quan trọng: dùng flex-wrap để nó tự nhảy xuống dòng trên điện thoại */}
+  <div style={{ display: "flex", flexWrap: "wrap", gap: "20px" }}>
+    
+    {/* Phần Main (Danh sách phim) */}
+    <main style={{ flex: "1 1 300px", minWidth: "0" }}>
+      {/* ... giữ nguyên nội dung bên trong main ... */}
+    </main>
+
+    {/* Phần Sidebar (Phim Hot) */}
+    <aside style={{ flex: "0 0 310px", width: "100%" }}>
+      {/* ... giữ nguyên nội dung bên trong aside ... */}
+    </aside>
+
+  </div>
+</div>
           
           <main>
             {isHome ? (
